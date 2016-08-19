@@ -90,10 +90,10 @@ class TekAwg(socket.socket):
 
     def get_error_queue(self):
         err_queue = []
-        err_num = int(self.write("*ESR?",True)[0])
+        err_num = int(self.write("*ESR?", True)[0])
         while err_num != 0:
             err_queue.append(self.write("SYSTEM:ERR?",True))
-            err_num = int(self.write("*ESR?",True)[0])
+            err_num = int(self.write("*ESR?", True)[0])
         return err_queue
 
 #############  PRINTING SETTINGS   #########################
@@ -283,12 +283,23 @@ class TekAwg(socket.socket):
         raw_waveform_str = self.__get_waveform_data(filename)
         if self.write('WLISt:WAVeform:TYPE? "'+filename+'"', True) == "REAL":
             return raw_waveform_str
+            #TODO do some formatting on this output so it's not just raw data
         elif self.write('WLISt:WAVeform:TYPE? "'+filename+'"', True) == "INT":
             return raw_waveform_str
+            #TODO do some formatting on this output so it's not just raw data
 
 
     def __get_waveform_data(self, filename):
+        """Get the raw waveform data from the AWG, this will be in the packed format containing
+        both the channel waveforms as well as the markers, this needs to be correctly formatted.
+            Args:
+                filename: name of the file to get from the AWG
 
+            Returns: a string of binary containing the data from the AWG, header has been removed
+
+            Raises:
+                IOError if there was a timeout, most likely due to connection or incorrect name
+        """
         self.send(str('WLISt:WAVeform:DATA? "'+filename+'"\r\n'))
         time.sleep(.05)
 
@@ -300,9 +311,7 @@ class TekAwg(socket.socket):
                 raise IOError("Timeout. Failed to get waveform")
             try:
                 raw_waveform = "".join([raw_waveform, self.recv(10000)])
-            except socket.error as e:
-                #print e
-                #self.send("\r\n")
+            except socket.error:
                 time.sleep(1)
                 timeouts += 1
             if len(raw_waveform) > 5:
@@ -318,11 +327,36 @@ class TekAwg(socket.socket):
 
 
     def new_waveform(self, filename, packed_data, packet_size=20000):
+        """Creates a new waveform on the AWG and saves the data. It has error checking
+            in the transmission, after every packet it asks the AWG if it had any issues
+            writing the data to memory. If the AWG reports an error it resends that packet.
+            This communication guarantees correct waveform on the AWG, but the requesting
+            of updates from the AWG adds time to the transmission. There is a tradeoff
+            between packet_size and speed of transfer, too large of packets and errors increase,
+            too small and it takes longer because of waiting for the AWG to respond that it
+            recieved the data correctly.
+
+            Args:
+                filename: the name of the new waveform
+
+                packed_data: numpy ndarray or list of the already 'packed' data (both
+                            the waveform and markers in an int16 format)
+
+                packet_size: Size of the TCP/IP packet which are sent to the AWG.
+                            This has a large effect on speed of transfer and stability.
+
+            Returns:
+                None
+
+            Raises:
+                IOError: if there was a connection error"""
         packed_data = ints_to_byte_str(packed_data)
         self.__new_waveform_int(filename, packed_data, packet_size)
+        return None
 
 
     def __new_waveform_int(self, filename, packed_data, packet_size):
+        """This is the helper function which actually sends the waveform to the AWG, see above."""
         errs = self.get_error_queue()
         if errs != []:
             print errs,
@@ -337,36 +371,27 @@ class TekAwg(socket.socket):
         self.write('WLISt:WAVeform:NEW "'+filename+'",'+str(data_length/2)+",INT")
 
         if data_length >= packet_size*2:
-            #print "Transfer Progress: ",
             for i in range(0, data_length/(packet_size*2)):
-                #if (i % 10) == 0:
-                #    errs = self.get_error_queue()
-                #    if errs != []:
-                #        print errs,
-
-                #if (i/(data_length/(packet_size*200.)))%5 == 0:
-                    #print int(i/(data_length/(packet_size*200.))), " ",
-                    #sys.stdout.flush()
+                prefix = create_prefix(packed_data[i*packet_size*2:(i+1)*packet_size*2])
+                packet = packed_data[i*packet_size*2:(i+1)*packet_size*2]
                 success = False
                 while not success:
                     success = self.write('WLIST:WAVEFORM:DATA "'+filename+'",'
-                           +str(i*packet_size)+','
-                           +str(packet_size)+','
-                           +create_prefix(packed_data[i*packet_size*2:(i+1)*packet_size*2])
-                           +packed_data[i*packet_size*2:(i+1)*packet_size*2]
-                           +";*ESR?\r\n",True)=="0"
-                #time.sleep(.001)
-            #print "100"
+                                         +str(i*packet_size)+','
+                                         +str(packet_size)+','
+                                         +prefix
+                                         +packet
+                                         +";*ESR?\r\n", True) == "0"
 
         remaining_data_size = data_length-data_length/(packet_size*2)*packet_size*2
 
-        if remaining_data_size>0:
+        if remaining_data_size > 0:
             self.write('WLIST:WAVeform:DATA "'+filename+'",'
-                   +str((data_length-remaining_data_size)/2)+','
-                   +str(remaining_data_size/2)+","
-                   +create_prefix(packed_data[data_length-remaining_data_size:])
-                   +packed_data[data_length-remaining_data_size:]
-                   +"\r\n")
+                       +str((data_length-remaining_data_size)/2)+','
+                       +str(remaining_data_size/2)+","
+                       +create_prefix(packed_data[data_length-remaining_data_size:])
+                       +packed_data[data_length-remaining_data_size:]
+                       +"\r\n")
 
         errs = self.get_error_queue()
         if errs != []:
@@ -394,9 +419,12 @@ class TekAwg(socket.socket):
         self.write("FREQ "+str(freq))
 
     def get_run_mode(self):
+        """Gets the current running mode of the AWG: SEQ, CONT, TRIG, GAT"""
         return self.write("AWGCONTROL:RMODE?", True)
 
     def set_run_mode(self, mode):
+        """Sets the run mode of the AWG, allowed modes are:
+            continuous, triggered, gated, sequence"""
         if mode.lower() in ["continuous", "cont",
                             "trigered", "trig",
                             "gated", "gat",
@@ -404,6 +432,8 @@ class TekAwg(socket.socket):
             self.write("AWGCONTROL:RMODE "+mode)
 
     def get_run_state(self):
+        """Gets the current state of the AWG, possible states are:
+        stopped, waiting for trigger, or running"""
         state = self.write("AWGControl:RSTate?", True)
         if state == "0":
             return "Stopped"
@@ -414,9 +444,11 @@ class TekAwg(socket.socket):
         raise IOError("Not valid run state")
 
     def run(self):
+        """Start running the AWG"""
         self.write("AWGControl:RUN")
 
     def stop(self):
+        """Stop the AWG"""
         self.write("AWGCONTROL:STOP")
 
     def get_amplitude(self, channel=None):
@@ -517,7 +549,7 @@ class TekAwg(socket.socket):
     def get_seq_list(self):
         """Get the current list of waveforms in the sequencer"""
         seq_length = self.get_seq_length()
-        seq_list = ["" for y in range(seq_length)]
+        seq_list = ["" for _ in range(seq_length)]
 
         for i in range(seq_length):
             seq_list[i] = self.get_seq_element(i+1)
@@ -540,60 +572,8 @@ class TekAwg(socket.socket):
             if i < seq_len:
                 cmd_str = cmd_str+';:SEQ:ELEM'+str(i+1)+':JTAR:TYPE NEXT'
         self.settimeout(10)
-        #time.sleep(2)
         self.write(cmd_str)
         self.settimeout(.5)
-
-
-
-    # def pack_data_int(self, data, markers):
-    #     if len(markers) != len(data):
-    #         Warning("Marker and data length do not match, setting markers to 0.")
-    #         markers = numpy.zeros(len(data))
-
-    #     if min(markers) < 0 or max(markers) > 3:
-    #         Warning("Markers out of bounds, must be 0,1,2,3 which correspond to 00,01,10,11"
-    #                 "for the flags.\n Setting all markers to 0, try again with correct markers"
-    #                 "if this upsets you.")
-    #         markers = numpy.zeros(len(data))
-
-    #     for i in range(0, len(data)):
-    #         data[i] = data[i] | markers[i] << 14
-
-    #     return struct.pack("<"+"H"*len(data), *data)
-
-
-    # def float_int_conversion(self, data, markers):
-
-    #     markers = map(numpy.int32, markers)
-    #     abs_max = max(abs(numpy.float32(data)))
-    #     normed_data = data/abs_max
-    #     normed_data = map(numpy.int32, normed_data*(8191)+8192)
-
-    #     return self.pack_data_int(normed_data, markers)
-
-    # def pack_data_real(self, data, markers):
-    #     for i in markers:
-    #         i << 7
-    #     formatted_data = [val for pair in zip(data, markers) for val in pair]
-
-    #     return struct.pack("<"+"fB"*len(data), *formatted_data)
-
-    # def create_prefix(self, data):
-    #     return "#"+str(len(list(str(len(data)))))+str(len(data))
-
-#    def get_sub_seq_list(self):
-#        num_seqs = int(self.write("SLISt:SIZE?",True))
-#
-#        for i in range(0,num_seqs):
-#            seq_names = self.write("SLIST:NAME? "+str(i+1),True)
-#            print seq_names,"  ",
-#            print self.write('SLIST:SUBS:LENG? '+seq_names,True)
-#
-#        return seq_names.strip('"')
-#
-#    def new_sub_seq(self,seq_name,seq_length):
-#        self.write('SLIST:SUBSEQUENCE:NEW "'+seq_name+'",'+str(seq_length))
 
 
 _bit_depth_mult_offset = {8:  (120, 127),
@@ -781,7 +761,7 @@ def ints_to_byte_str(codes):
         return codes.byteswap().tobytes()
 
 def byte_str_to_ints(codes):
-    return np.fromstring(codes,dtype="<u2")
+    return np.fromstring(codes, dtype="<u2")
 
 def unmerge_arb_and_markers(codes):
     seq_len = len(codes)
