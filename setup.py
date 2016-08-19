@@ -6,5 +6,5 @@ setup(name='TekAwg',
       author='Dar Dahlen',
       author_email='dardahlen@gmail.com',
       url='https://github.com/dahlend/TekAwg/',
-      packages=['numpy'],
+      packages=['TekAwg'],
      )
