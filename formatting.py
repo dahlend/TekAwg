@@ -1,6 +1,7 @@
 import numpy as np
 import sys
 
+#These are the bit conversions needed for accurate representation on the AWG
 _bit_depth_mult_offset = {8:  (254, 127),
                           12: (4094, 2047),
                           14: (16382, 8191),
@@ -14,8 +15,8 @@ def bifloat_to_uint(value, bit_depth):
     """Convert a float on the range [-1.0, 1.0] to a unsigned int.
 
     Not a totally straightforward conversion, this conversion will result in matching
-    values seen on the AWG, however perfect decimals may not be perfect as certain
-    fractions are not perfectly representable in binary.
+    values seen on the AWG, however some decimals may not be represented exactly
+    as certain fractions in decimal are not representable in binary.
 
     Args:
         value: a single float, or list of floats, or numpy array of
