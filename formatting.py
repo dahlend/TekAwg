@@ -142,7 +142,6 @@ def merge_arb_and_markers(arb=None, mk1=None, mk2=None, bit_depth=14):
     # bit shift mk1 and mk2 to the correct flag bits, 15 and 16 respectively
     np.left_shift(mk1, 14, mk1)
     np.left_shift(mk2, 15, mk2)
-    print bin(arb[5])
 
     np.bitwise_or(arb, mk1, arb)
     np.bitwise_or(arb, mk2, arb)
