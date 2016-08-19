@@ -7,6 +7,4 @@ setup(name='TekAwg',
       author_email='dardahlen@gmail.com',
       url='https://github.com/dahlend/TekAwg/',
       py_modules=['TekAwg']
-      #package_dir={'': 'src'},
-      #packages=['']
      )
