@@ -1,4 +1,5 @@
 import numpy as np
+import sys
 
 _bit_depth_mult_offset = {8:  (254, 127),
                           12: (4094, 2047),
