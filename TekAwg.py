@@ -360,8 +360,6 @@ class TekAwg(socket.socket):
             print errs,
         data_length = len(packed_data)
 
-        print repr(packed_data[1:1000])
-
         self.settimeout(1)
         if '"'+filename+'"' in self.get_waveform_list():
             self.del_waveform(filename)
