@@ -405,7 +405,7 @@ class TekAwg(socket.socket):
 
     def get_freq(self):
         """Returns the current sample rate of the AWG"""
-        return float(self.write("FREQ?", True))
+        return self.write("FREQ?", True)
 
     def set_freq(self, freq):
         """Sets the current sample rate of the AWG"""
@@ -466,7 +466,7 @@ class TekAwg(socket.socket):
         """Set whether the channels are on or off, where 0 means off and 1 means on"""
         if channel is None: channel = [1, 2, 3, 4]
         if not isinstance(channel, list): channel = [channel]
-        if not isinstance(state, list): state = [state]
+        if not isinstance(state, list): state = [state]*len(channel)
 
         if len(state) != len(channel):
             raise ValueError("Number of channels does not match number of states.")
@@ -474,7 +474,6 @@ class TekAwg(socket.socket):
         cmd_str = ''
         for i in range(len(channel)):
             cmd_str = cmd_str + ';:OUTPUT'+str(channel[i])+':STATE '+str(state[i])
-        print cmd_str
         self.write(cmd_str)
 
 
