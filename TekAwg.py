@@ -353,8 +353,8 @@ class TekAwg(socket.socket):
     def __new_waveform_int(self, filename, packed_data, packet_size):
         """This is the helper function which actually sends the waveform to the AWG, see above."""
         errs = self.get_error_queue()
-        if errs != []:
-            print errs,
+        #if errs != []:
+        #    print errs,
         data_length = len(packed_data)
 
         self.settimeout(1)
@@ -411,6 +411,7 @@ class TekAwg(socket.socket):
         """Sets the current sample rate of the AWG"""
         self.write("FREQ "+str(freq))
 
+
     def get_run_mode(self):
         """Gets the current running mode of the AWG: SEQ, CONT, TRIG, GAT"""
         return self.write("AWGCONTROL:RMODE?", True)
@@ -450,11 +451,81 @@ class TekAwg(socket.socket):
         cmd_str = ';'.join([':SOURCE'+str(c)+':VOLTAGE?' for c in channel])
         return [float(x) for x in self.write(cmd_str, True, len(channel)).split(";")]
 
+    def set_amplitude(self, amplitude, channel=None):
+        if channel is None: channel = [1, 2, 3, 4]
+        if not isinstance(channel, list): channel = [channel]
+        if not isinstance(amplitude, list): amplitude = [amplitude]*len(channel)
+
+        if len(amplitude) != len(channel):
+            raise ValueError("Number of channels does not match number of amplitudes.")
+
+        cmd_str = []
+        for i in range(len(channel)):
+            cmd_str.append(':SOURCE'+str(int(channel[i]))+':VOLTAGE '+str(amplitude[i]) )
+        cmd_str = ';'.join(cmd_str)
+        self.write(cmd_str)
+
     def get_offset(self, channel=None):
         if channel is None: channel = [1, 2, 3, 4]
         if not isinstance(channel, list): channel = [channel]
         cmd_str = ';'.join([':SOURCE'+str(c)+':VOLTAGE:OFFSET?' for c in channel])
         return [float(x) for x in self.write(cmd_str, True, len(channel)).split(";")]
+
+    def set_offset(self, offset, channel=None):
+        if channel is None: channel = [1, 2, 3, 4]
+        if not isinstance(channel, list): channel = [channel]
+        if not isinstance(offset, list): offset = [offset]*len(channel)
+
+        if len(offset) != len(channel):
+            raise ValueError("Number of channels does not match number of amplitudes.")
+
+        cmd_str = []
+        for i in range(len(channel)):
+            cmd_str.append(':SOURCE'+str(channel[i])+':VOLTAGE:OFFSET '+str(offset[i]) )
+        cmd_str = ';'.join(cmd_str)
+        self.write(cmd_str)
+
+    def get_marker_high(self, marker, channel=None):
+        if channel is None: channel = [1, 2, 3, 4]
+        if not isinstance(channel, list): channel = [channel]
+        cmd_str = ';'.join([':SOURCE'+str(c)+':MARKER'+str(int(marker))+':VOLTAGE:HIGH?' for c in channel])
+        return [float(x) for x in self.write(cmd_str, True, len(channel)).split(";")]
+
+    def set_marker_high(self, voltage, marker, channel=None):
+        """Set whether the channels are on or off, where 0 means off and 1 means on"""
+        assert int(marker) in [1,2]
+        if channel is None: channel = [1, 2, 3, 4]
+        if not isinstance(channel, list): channel = [channel]
+        if not isinstance(voltage, list): voltage = [voltage]*len(channel)
+
+        if len(voltage) != len(channel):
+            raise ValueError("Number of channels does not match number of voltages.")
+
+        cmd_str = ''
+        for i in range(len(channel)):
+            cmd_str = cmd_str + ';:SOURCE{}:MARKER{}:VOLTAGE:HIGH {}'.format(int(channel[i]),int(marker),voltage[i])
+        self.write(cmd_str)
+
+    def get_marker_low(self, marker, channel=None):
+        if channel is None: channel = [1, 2, 3, 4]
+        if not isinstance(channel, list): channel = [channel]
+        cmd_str = ';'.join([':SOURCE'+str(int(c))+':MARKER'+str(int(marker))+':VOLTAGE:LOW?' for c in channel])
+        return [float(x) for x in self.write(cmd_str, True, len(channel)).split(";")]
+
+    def set_marker_low(self, voltage, marker, channel=None):
+        """Set whether the channels are on or off, where 0 means off and 1 means on"""
+        assert int(marker) in [1,2]
+        if channel is None: channel = [1, 2, 3, 4]
+        if not isinstance(channel, list): channel = [channel]
+        if not isinstance(voltage, list): voltage = [voltage]*len(channel)
+
+        if len(voltage) != len(channel):
+            raise ValueError("Number of channels does not match number of voltages.")
+
+        cmd_str = ''
+        for i in range(len(channel)):
+            cmd_str = cmd_str + ';:SOURCE{}:MARKER{}:VOLTAGE:LOW {}'.format(int(channel[i]),int(marker),voltage[i])
+        self.write(cmd_str)    
 
     def get_chan_state(self, channel=None):
         if channel is None: channel = [1, 2, 3, 4]
@@ -572,10 +643,10 @@ import numpy as np
 import sys
 
 #These are the bit conversions needed for accurate representation on the AWG
-_bit_depth_mult_offset = {8:  (254, 127),
-                          12: (4094, 2047),
-                          14: (16382, 8191),
-                          16: (65534, 32767)}
+_bit_depth_mult_offset = {8:  (127, 127),
+                          12: (2047, 2047),
+                          14: (8191, 8191),
+                          16: (32767, 32767)}
 
 
 def create_prefix(data):
