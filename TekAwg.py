@@ -547,6 +547,23 @@ class TekAwg(socket.socket):
             cmd_str = cmd_str + ';:OUTPUT'+str(channel[i])+':STATE '+str(state[i])
         self.write(cmd_str)
 
+    def get_trig_source(self):
+        return self.write("TRIG:SOUR?",True)
+
+    def set_trig_source(self,source):
+        trig_sources = ["int","internal","ext","external"]
+        if source.lower() in trig_sources:
+            self.write("TRIG:SOUR "+source)
+
+    def get_trig_interval(self):
+        return float(self.write("TRIG:TIM?",True))
+
+    def set_trig_interval(self, interval):
+        assert float(interval) > 0
+        self.write("TRIG:TIM "+str(float(interval)))
+
+    def trig(self):
+        return self.write("*TRG")
 
 ####################  SEQUENCER ######################
 
